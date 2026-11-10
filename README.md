@@ -10,6 +10,8 @@
 
 - [下载调试 APK](dist/fosu-campus-assistant-1.2.0-debug.apk)
 - [SHA-256 校验文件](dist/SHA256SUMS.txt)
+- [GitHub 仓库](https://github.com/Skyline44-cyber/fosu-campus-assistant)
+- [GitHub Release v1.2.0](https://github.com/Skyline44-cyber/fosu-campus-assistant/releases/tag/v1.2.0)
 
 > 本项目为非官方个人工具，与佛山大学、佛大一卡通及 100 教务均无隶属关系。
 

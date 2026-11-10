@@ -69,8 +69,15 @@ uses-permission: name='dev.campususage.fosu.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_
 1. 真实账号登录 100 教务的端到端验收；
 2. 真实课表页面的 DOM 兼容性验证；
 3. 节次从 100 教务到 14 小节的实际映射验证；
-4. 窄屏、大字体和输入法遮挡的点击级 UI 验收；
-5. GitHub 发布仓库的远程推送（等待仓库地址和授权）。
+4. 窄屏、大字体和输入法遮挡的点击级 UI 验收。
+
+GitHub 仓库与 Release 已发布：
+
+```text
+仓库：https://github.com/Skyline44-cyber/fosu-campus-assistant
+Release：https://github.com/Skyline44-cyber/fosu-campus-assistant/releases/tag/v1.2.0
+APK：https://github.com/Skyline44-cyber/fosu-campus-assistant/releases/download/v1.2.0/fosu-campus-assistant-1.2.0-debug.apk
+```
 
 发布前建议在 Android 12+ 真机、校园网或 VPN 环境检查：
 
