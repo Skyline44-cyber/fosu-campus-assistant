@@ -38,11 +38,10 @@ object OfficialServices {
     val ALL = listOf(ECARD)
 }
 
-object TimetableWebContract {
-    const val START_URL = "https://100.fosu.edu.cn/"
-    const val EXTRA_COURSES_JSON = "courses_json"
-    const val EXTRA_REPLACE = "replace_courses"
-    const val EXTRA_MESSAGE = "import_message"
+object ChaoxingContract {
+    const val START_URL = "https://i.chaoxing.com/"
+    const val EXTRA_COURSES_JSON = "chaoxing_courses_json"
+    const val EXTRA_REPLACE = "chaoxing_replace_courses"
 }
 
 object OfficialLauncher {
@@ -50,7 +49,7 @@ object OfficialLauncher {
 
     const val FOSU_REG = "https://reg.fosu.edu.cn/"
     const val FOSU_AUTH = "https://authserver.fosu.edu.cn/authserver/login"
-    const val FOSU_JW = TimetableWebContract.START_URL
+    const val CHAOXING = "https://i.chaoxing.com/"
     const val FOSU_HELP = "https://help.fosu.edu.cn/point2"
 
     fun openService(context: Context, service: OfficialService): Boolean {
@@ -91,13 +90,13 @@ object OfficialLauncher {
         context.startActivity(Intent.createChooser(intent, title))
     }
 
-    /** Clears the WebView cookie jar used by the 100 teaching-system login. */
-    fun clearTimetableLogin(context: Context) {
+    /** Clears the WebView cookie jar used by the Chaoxing login. */
+    fun clearChaoxingLogin(context: Context) {
         val cookies = CookieManager.getInstance()
         cookies.removeAllCookies {
             cookies.flush()
             WebStorage.getInstance().deleteAllData()
-            Toast.makeText(context, "已清除 100 教务登录状态", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "已清除学习通登录状态", Toast.LENGTH_SHORT).show()
         }
     }
 }

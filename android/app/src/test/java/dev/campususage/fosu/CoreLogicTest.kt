@@ -3,12 +3,14 @@ package dev.campususage.fosu
 import dev.campususage.fosu.data.*
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 
 class WeekSpecTest {
     @Test
@@ -31,6 +33,13 @@ class WeekSpecTest {
         assertTrue(WeekSpec.includes("1-8单,10-16双", 12))
         assertFalse(WeekSpec.includes("1-8单,10-16双", 11))
         assertFalse(WeekSpec.includes("1-8单,10-16双", 9))
+    }
+
+    @Test
+    fun compressesWeekNumbers() {
+        assertEquals("1-3,5,8-9", WeekSpec.compress(listOf(1, 2, 3, 5, 8, 9)))
+        assertEquals("1-16", WeekSpec.compress((1..16).toList()))
+        assertEquals("", WeekSpec.compress(emptyList()))
     }
 
     @Test
@@ -90,7 +99,7 @@ class TimetableParserTest {
     }
 
     @Test
-    fun parsesJsonFromWebExtraction() {
+    fun parsesJsonFromManualImport() {
         val result = TimetableTextParser.parse(
             """[{"name":"数据结构","teacher":"王五","room":"A3-201","weekday":2,"start":5,"end":6,"weeks":"1-8"}]"""
         )
@@ -101,64 +110,135 @@ class TimetableParserTest {
     }
 }
 
-class SectionScheduleTest {
+class TimetableSectionsTest {
     @Test
-    fun hasSixBigAndFourteenSmallSections() {
-        assertEquals(6, SectionSchedule.big.size)
-        assertEquals(14, SectionSchedule.COUNT)
-        assertEquals(3, SectionSchedule.big[1].count)
-        assertEquals(3, SectionSchedule.big[3].count)
-        assertEquals(2, SectionSchedule.big[0].count)
-        assertEquals(2, SectionSchedule.big[2].count)
+    fun usesTwelveDefaultSections() {
+        assertEquals(12, TimetableSections.defaultTimes.size)
+        assertEquals("08:00-08:45", TimetableSections.defaultTimes[0])
+        assertEquals("08:00-09:40", TimetableSections.timeRange(TimetableSections.defaultTimes, 1, 2))
+        assertEquals(12, TimetableSections.sectionCount(Settings()))
     }
 
     @Test
-    fun formatsRealSectionTimes() {
-        assertEquals("08:00-09:25", SectionSchedule.timeRange(1, 2))
-        assertEquals("09:40-11:50", SectionSchedule.timeRange(3, 5))
-        assertEquals("20:05-21:30", SectionSchedule.timeRange(13, 14))
+    fun acceptsSchoolTimesFromChaoxing() {
+        val normalized = TimetableSections.normalized(listOf("8:00-8:50", "8:55-9:45"))
+        assertEquals(listOf("08:00-08:50", "08:55-09:45"), normalized)
+        assertEquals("08:00-09:45", TimetableSections.timeRange(normalized, 1, 2))
+    }
+
+    @Test
+    fun nextCourseDateUsesRealWeekday() {
+        val settings = Settings(termStart = LocalDate.of(2026, 9, 7), totalWeeks = 16)
+        val course = Course(
+            id = "c1",
+            name = "大学英语",
+            weekday = 2,
+            startSection = 3,
+            endSection = 4,
+            weeks = "2-16"
+        )
+        assertEquals(
+            LocalDate.of(2026, 9, 15),
+            TimetableMath.nextCourseDate(course, settings, LocalDate.of(2026, 9, 7))
+        )
+        assertNull(TimetableMath.nextCourseDate(course, settings, LocalDate.of(2027, 2, 1)))
     }
 }
 
-class TeachingCalendarTest {
-    private val course = Course(
-        id = "c1",
-        name = "大学英语",
-        weekday = 2,
-        startSection = 3,
-        endSection = 4,
-        weeks = "1-16"
-    )
+class ChaoxingParserTest {
+    private val firstWeek = LocalDate.of(2026, 9, 7)
+    private val firstWeekMillis = firstWeek.atStartOfDay(ZoneId.of("Asia/Shanghai"))
+        .toInstant().toEpochMilli()
 
-    @Test
-    fun holidayOnlyAdvancesDateCursor() {
-        val settings = Settings(
-            termStart = LocalDate.of(2026, 11, 9),
-            holidays = setOf(LocalDate.of(2026, 11, 10))
-        )
-        assertFalse(TeachingCalendar.isTeachingDay(LocalDate.of(2026, 11, 10), settings))
-        assertEquals(LocalDate.of(2026, 11, 11), TeachingCalendar.nextTeachingDay(LocalDate.of(2026, 11, 10), settings))
-        assertEquals(LocalDate.of(2026, 11, 11), TeachingCalendar.nextCourseDate(course, settings, LocalDate.of(2026, 11, 9)))
+    private fun response(week: Int, lessonWeeks: String = week.toString()): String {
+        return """
+            {
+              "result": 1,
+              "msg": "success",
+              "data": {
+                "curriculum": {
+                  "maxWeek": 16,
+                  "firstWeekDate": $firstWeekMillis,
+                  "lessonTimeConfigArray": ["8:00-8:45", "8:55-9:40", "10:00-10:45", "10:55-11:40"]
+                },
+                "lessonArray": [
+                  {
+                    "lessonId": "L1",
+                    "name": "高等数学",
+                    "teacherName": "张三",
+                    "location": "C5-101",
+                    "dayOfWeek": 1,
+                    "beginNumber": 1,
+                    "length": 2,
+                    "weeks": "$lessonWeeks"
+                  },
+                  {
+                    "lessonId": "L2",
+                    "name": "大学英语",
+                    "teacherName": "李四",
+                    "location": "B2-203",
+                    "dayOfWeek": 3,
+                    "beginNumber": 3,
+                    "length": 2,
+                    "weeks": "$lessonWeeks"
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
     }
 
     @Test
-    fun holidayCourseMovesToNextTeachingDay() {
-        val settings = Settings(
-            termStart = LocalDate.of(2026, 11, 9),
-            holidays = setOf(LocalDate.of(2026, 11, 10))
-        )
-        val scheduled = TeachingCalendar.scheduleForWeek(settings, 1, listOf(course))
-        assertEquals(1, scheduled.size)
-        assertEquals(LocalDate.of(2026, 11, 11), scheduled[0].date)
-        assertTrue(scheduled[0].shifted)
+    fun parsesCurriculumAndLessons() {
+        val parsed = ChaoxingParser.parseWeek(response(6), 6)
+        assertEquals(16, parsed.maxWeek ?: -1)
+        assertEquals(firstWeek, parsed.firstWeekDate)
+        assertEquals(4, parsed.sectionTimes.size)
+        assertEquals(2, parsed.lessons.size)
+        assertEquals("高等数学", parsed.lessons[0].name)
+        assertEquals("张三", parsed.lessons[0].teacher)
+        assertEquals(1, parsed.lessons[0].weekday)
+        assertEquals(2, parsed.lessons[0].endSection)
+        assertEquals(setOf(6), parsed.lessons[0].weeks)
     }
 
     @Test
-    fun normalWeekdayIsNotShifted() {
-        val settings = Settings(termStart = LocalDate.of(2026, 11, 9))
-        val scheduled = TeachingCalendar.scheduleForWeek(settings, 1, listOf(course))
-        assertEquals(LocalDate.of(2026, 11, 10), scheduled[0].date)
-        assertFalse(scheduled[0].shifted)
+    fun mergesWeeksIntoOneCourse() {
+        val merged = ChaoxingParser.merge(
+            listOf(
+                ChaoxingParser.parseWeek(response(6), 6),
+                ChaoxingParser.parseWeek(response(7), 7)
+            )
+        )
+        assertEquals(2, merged.courses.size)
+        assertEquals(16, merged.maxWeek)
+        assertEquals("6-7", merged.courses[0].weeks)
+        assertEquals(firstWeek, merged.firstWeekDate)
+        assertEquals(
+            listOf("08:00-08:45", "08:55-09:40", "10:00-10:45", "10:55-11:40"),
+            merged.sectionTimes
+        )
+    }
+
+    @Test
+    fun rejectsLoginFailureJson() {
+        val error = runCatching {
+            ChaoxingParser.parseWeek("""{"result":0,"data":"用户信息异常，请登录后再试","msg":"用户信息异常，请登录后再试"}""", 1)
+        }.exceptionOrNull()
+        assertNotNull(error)
+        assertTrue(error is ChaoxingException)
+        assertTrue(error!!.message!!.contains("登录"))
+    }
+
+    @Test
+    fun encodedTimetableCanBeDecoded() {
+        val merged = ChaoxingParser.merge(listOf(ChaoxingParser.parseWeek(response(6), 6)))
+        val decoded = ChaoxingParser.decode(ChaoxingParser.encode(merged))
+        assertNotNull(decoded)
+        assertEquals(2, decoded!!.courses.size)
+        assertEquals(16, decoded.maxWeek)
+        assertEquals(firstWeek, decoded.firstWeekDate)
+        assertEquals("高等数学", decoded.courses[0].name)
     }
 }
 

@@ -1,1 +1,1 @@
-9fb4fc33909976d5742a0d834e07ddc174305ac35f2a8d18d9ab1491bfd19040  fosu-campus-assistant-1.2.0-debug.apk
+67cf98a3209ab59ff02c062be2bf4d26e21aa19e8b8fcaeff2496c17d350f4c1  fosu-campus-assistant-1.3.0-debug.apk

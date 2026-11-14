@@ -1,93 +1,128 @@
-# 构建与验证记录
+# 验证记录
 
-日期：2026-11-11（Asia/Shanghai）
+日期：2026-11-14
 
-## 环境
-
-| 项目 | 版本 |
-| --- | --- |
-| JDK | Amazon Corretto 17.0.21 |
-| Gradle | 8.13 |
-| Android Gradle Plugin | 8.13.2 |
-| Kotlin | 2.0.21 |
-| compileSdk / targetSdk | 36 |
-| minSdk | 26 |
-| Build-Tools | 36.0.0 |
-
-## 结果
+## 构建环境
 
 ```text
-:app:testDebugUnitTest    PASS（18 个测试，0 失败）
-:app:assembleDebug        PASS
-:app:lintDebug            PASS（No issues found）
+JDK     17.0.21 (Temurin)
+Gradle  8.13
+AGP     8.13.2
+compileSdk 36
+build-tools 36.0.0
+minSdk 26
+targetSdk 36
 ```
 
-测试覆盖：
+构建在 ASCII 路径 `D:\fosu-build` 下执行，避免中文路径导致 Gradle 原生库加载失败。
 
-- 周次范围、单双周、分段单双周、中文格式
-- 电费余额/读数/房间/日期文本解析
-- 课表管道文本与 JSON 解析
-- 抄表区间、月用量按重叠天数分摊、余额可用天数
-- 6 大节 / 14 小节结构与真实起止时间
-- 节假日日期游标、节假日课程顺延、普通日期不顺延
+## 单元测试
 
-页面提取器另外用 happy-dom 做了脚本级样张验证：
+命令：
 
-- 课程列表表格（课程名称/教师/地点/星期/节次/周次）
-- 节次 × 星期周课表（含 `rowspan` 合并单元格）
-- 单双周与 `.week` 字段
-- 旧式 `<br>` 分隔课程单元格
-- 解析结果通过 `FosuBridge.onCourses` 回传
+```bash
+gradle testDebugUnitTest
+```
+
+结果：**21 个测试，0 failures，0 errors，0 skipped**。
+
+覆盖：
+
+- 周次范围、单双周、周次压缩；
+- 12 节默认时间、学习通节次时间标准化；
+- 学习通课表 JSON 解析；
+- 逐周合并与周次压缩；
+- 学习通登录失败响应；
+- 课表编码/解码；
+- 下一次上课日期；
+- 电费文本解析；
+- 手动课表文本/JSON 解析；
+- 抄表区间、月分摊、余额可用天数。
+
+## Lint
+
+命令：
+
+```bash
+gradle lintDebug
+```
+
+结果：
+
+```text
+No issues found.
+```
 
 ## APK
 
+命令：
+
+```bash
+gradle assembleDebug
+```
+
+结果：**BUILD SUCCESSFUL**。
+
 ```text
-文件：dist/fosu-campus-assistant-1.2.0-debug.apk
-大小：约 16 MB
+文件：fosu-campus-assistant-1.3.0-debug.apk
+大小：16,644,788 bytes
 包名：dev.campususage.fosu.debug
-版本：1.2.0-dev（versionCode 3）
-SHA-256：9fb4fc33909976d5742a0d834e07ddc174305ac35f2a8d18d9ab1491bfd19040
+版本：1.3.0-dev（versionCode 4）
+minSdk：26
+targetSdk：36
+SHA-256：67cf98a3209ab59ff02c062be2bf4d26e21aa19e8b8fcaeff2496c17d350f4c1
 ```
 
-签名：Android Debug，APK Signature Scheme v2 验证通过。
-
-权限检查：
+签名：
 
 ```text
-package: dev.campususage.fosu.debug
-uses-permission: name='android.permission.INTERNET'
-permission: dev.campususage.fosu.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
-uses-permission: name='dev.campususage.fosu.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
+Verifies
+Verified using v2 scheme (APK Signature Scheme v2): true
+Signer: CN=Android Debug
 ```
 
-`INTERNET` 仅用于 100 教务 WebView 和学校认证页面；`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` 由 AndroidX 自动合并。
-
-## 尚未完成 / 已知风险
-
-当前环境没有 Android 模拟器、真机或学校测试账号，因此未完成：
-
-1. 真实账号登录 100 教务的端到端验收；
-2. 真实课表页面的 DOM 兼容性验证；
-3. 节次从 100 教务到 14 小节的实际映射验证；
-4. 窄屏、大字体和输入法遮挡的点击级 UI 验收。
-
-GitHub 仓库与 Release 已发布：
+权限：
 
 ```text
-仓库：https://github.com/Skyline44-cyber/fosu-campus-assistant
-Release：https://github.com/Skyline44-cyber/fosu-campus-assistant/releases/tag/v1.2.0
-APK：https://github.com/Skyline44-cyber/fosu-campus-assistant/releases/download/v1.2.0/fosu-campus-assistant-1.2.0-debug.apk
+android.permission.INTERNET
+dev.campususage.fosu.debug.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 ```
 
-发布前建议在 Android 12+ 真机、校园网或 VPN 环境检查：
+`DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` 由 AndroidX 自动合并，不是应用主动申请的敏感权限。
 
-1. 100 教务 CAS 登录、验证码、登录后跳转；
-2. 「打开课表」是否能定位学生课表入口；
-3. 「抓取」是否识别实际页面；替换/追加是否正确；
-4. 课程块是否显示名称、教师、地点、时间、周次；
-5. 添加节假日，确认节假日课程标「调」并顺延；
-6. 14 个小节、6 个大节及时间是否与校历一致；
-7. 清除教务登录后是否回到登录页；
-8. 360dp 窄屏和深色主题。
+## 包内容检查
 
-若学校升级 100 教务页面结构，抓取器可能需要更新；手动导入始终可用。
+- 未包含 `assets/timetable_extract.js`。
+- 未包含 `TimetableLoginActivity`。
+- 包含 `ChaoxingLoginActivity`、`ChaoxingClient` 和 `getMyLessons` 课表接口逻辑。
+- 未申请位置、通讯录、相机、存储或读取应用列表权限。
+
+## 接口探测
+
+未登录时请求：
+
+```text
+POST https://kb.chaoxing.com/pc/curriculum/getMyLessons
+```
+
+返回：
+
+```json
+{"data":"用户信息异常，请登录后再试","msg":"用户信息异常，请登录后再试","result":0}
+```
+
+单元测试覆盖了该失败响应，登录失效时会显示提示，不会写入空课表。
+
+## 尚未完成的验收
+
+- 没有真实学习通学生账号，未完成登录 → 同步 → 替换/追加 → 课表渲染的端到端验收。
+- 没有连接 Android 真机或模拟器（`adb devices` 为空），未做点击级 UI 验收。
+- 学习通登录页、接口字段或风控策略变化时，可能需要更新 `ChaoxingClient` / `ChaoxingParser`。
+
+在真实设备验收时重点检查：
+
+1. 登录后是否自动跳回 `i.chaoxing.com` 并触发同步；
+2. 同步对话框的课程数和周数是否正确；
+3. 7 天课表是否按学习通节次时间对齐；
+4. 替换/追加是否只修改本机课程；
+5. 「我的 → 清除学习通登录」后是否要求重新登录。

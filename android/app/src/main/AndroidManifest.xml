@@ -19,7 +19,7 @@
         android:usesCleartextTraffic="false">
 
         <activity
-            android:name=".TimetableLoginActivity"
+            android:name=".ChaoxingLoginActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
 

@@ -77,19 +77,12 @@ class FosuViewModel(application: Application) : AndroidViewModel(application) {
             it.copy(
                 settings = it.settings.copy(
                     termStart = termStart,
-                    totalWeeks = totalWeeks,
-                    sectionsPerDay = SectionSchedule.COUNT
+                    totalWeeks = totalWeeks
                 )
             )
         }
         timetableWeek = TimetableMath.currentWeek(data.settings, today)
         return ActionResult(true, "学期设置已保存")
-    }
-
-    fun updateHolidays(dates: List<LocalDate>): ActionResult {
-        val normalized = dates.distinct().sorted()
-        update { it.copy(settings = it.settings.copy(holidays = normalized.toSet())) }
-        return ActionResult(true, "已保存 ${normalized.size} 个节假日")
     }
 
     fun setWeek(week: Int) {
@@ -166,10 +159,10 @@ class FosuViewModel(application: Application) : AndroidViewModel(application) {
     fun saveCourse(course: Course): ActionResult {
         if (course.name.isBlank()) return ActionResult(false, "课程名不能为空")
         if (course.weekday !in 1..7) return ActionResult(false, "请选择星期")
-        if (course.startSection !in 1..SectionSchedule.COUNT ||
-            course.endSection !in course.startSection..SectionSchedule.COUNT
+        if (course.startSection !in 1..TimetableSections.MAX_SECTION ||
+            course.endSection !in course.startSection..TimetableSections.MAX_SECTION
         ) {
-            return ActionResult(false, "节次范围不正确（1-${SectionSchedule.COUNT} 小节）")
+            return ActionResult(false, "节次范围不正确（1-${TimetableSections.MAX_SECTION} 小节）")
         }
         if (course.weeks.isBlank()) return ActionResult(false, "请填写周次，例如 1-16")
         val normalized = course.copy(
@@ -203,6 +196,38 @@ class FosuViewModel(application: Application) : AndroidViewModel(application) {
         goToCurrentWeek()
         val warning = if (parsed.errors.isEmpty()) "" else "；${parsed.errors.size} 行未识别"
         return ActionResult(true, "已导入 ${parsed.courses.size} 门课程$warning")
+    }
+
+    fun importChaoxing(json: String, replace: Boolean): ActionResult {
+        val timetable = ChaoxingParser.decode(json)
+            ?: return ActionResult(false, "学习通课表数据格式不正确")
+        if (timetable.courses.isEmpty()) {
+            return ActionResult(false, "学习通没有返回课程")
+        }
+        val importedWeeks = timetable.courses.mapNotNull { course ->
+            WeekSpec.expand(course.weeks, 30).maxOrNull()
+        }.maxOrNull() ?: timetable.maxWeek
+        val totalWeeks = maxOf(timetable.maxWeek, importedWeeks, 1).coerceIn(1, 30)
+        val courses = if (replace) {
+            timetable.courses
+        } else {
+            (data.courses + timetable.courses).distinctBy { it.id }
+        }
+        update {
+            it.copy(
+                settings = it.settings.copy(
+                    termStart = timetable.firstWeekDate ?: it.settings.termStart,
+                    totalWeeks = totalWeeks,
+                    sectionTimes = timetable.sectionTimes
+                ),
+                courses = courses
+            )
+        }
+        timetableWeek = TimetableMath.currentWeek(data.settings, today)
+        return ActionResult(
+            true,
+            "已从学习通同步 ${timetable.courses.size} 门课程，共 $totalWeeks 周"
+        )
     }
 
     fun exportBackup(): String = store.export(data)

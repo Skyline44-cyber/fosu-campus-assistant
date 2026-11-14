@@ -113,7 +113,10 @@ object TimetableTextParser {
             }
             val start = firstInt(item, "start", "startSection", "开始节")
             val end = firstInt(item, "end", "endSection", "结束节") ?: start
-            if (start == null || end == null || start !in 1..SectionSchedule.COUNT || end !in start..SectionSchedule.COUNT) {
+            if (start == null || end == null ||
+                start !in 1..TimetableSections.MAX_SECTION ||
+                end !in start..TimetableSections.MAX_SECTION
+            ) {
                 errors += "第 ${i + 1} 项节次不合法"
                 continue
             }
@@ -204,7 +207,9 @@ object TimetableTextParser {
         if (numbers.isEmpty()) return null
         val start = numbers.first()
         val end = numbers.getOrNull(1) ?: start
-        if (start !in 1..SectionSchedule.COUNT || end !in start..SectionSchedule.COUNT) return null
+        if (start !in 1..TimetableSections.MAX_SECTION ||
+            end !in start..TimetableSections.MAX_SECTION
+        ) return null
         return start to end
     }
 

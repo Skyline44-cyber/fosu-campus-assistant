@@ -1,97 +1,93 @@
-# 100 教务接入说明
+# 学习通接入说明
 
-## 入口与认证
+## 入口与登录
 
-- 教务系统：<https://100.fosu.edu.cn/>
-- 统一身份认证：<https://authserver.fosu.edu.cn/authserver/login>
+- 学习通登录入口：<https://i.chaoxing.com/>
+- 实际登录页：`https://passport2.chaoxing.com/mlogin?fid=&newversion=true&refer=...`
+- 课表页面：<https://kb.chaoxing.com/pc/curriculum>
+- 课表接口：`POST https://kb.chaoxing.com/pc/curriculum/getMyLessons`
 
-访问 100 教务时，系统会重定向到学校 CAS：
+App 使用 WebView 加载学习通官方登录页，由用户输入手机号 / 超星号和学习通密码，或使用学习通支持的短信、扫码登录。App 不复制登录表单、不读取输入框，也不保存密码。
 
-```text
-https://100.fosu.edu.cn/
-  -> http://100.fosu.edu.cn/caslogin.jsp?kstzType=null
-  -> https://authserver.fosu.edu.cn/authserver/login?service=...
-```
-
-CAS 登录页包含密码加密、验证码和动态登录选项。App 不复制这套认证逻辑，而是用 Android WebView 加载学校页面，由用户在学校页面完成登录。
-
-100 教务的 CAS service 目前使用 HTTP，因此 Manifest 只对 `100.fosu.edu.cn` 开放明文流量：
-
-```xml
-<domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="false">100.fosu.edu.cn</domain>
-</domain-config>
-```
-
-其他域名仍禁止明文流量。
+学习通全部使用 HTTPS；App 不再放行任何明文流量。
 
 ## 登录态
 
-- 账号、密码、验证码只存在于学校页面的 WebView 中，App 不读取输入框。
-- 登录 Cookie 由 Android `CookieManager` 保存，用于后续继续访问 100 教务。
-- 用户可在「我的 → 清除 100 教务登录」删除 Cookie 和 WebStorage。
+- 登录 Cookie 由 Android `CookieManager` 保存，用于后续继续访问学习通。
+- 用户可在「我的 → 清除学习通登录」删除 Cookie 和 WebStorage。
 - 不把 Cookie、密码或页面 HTML 上传到任何服务器。
+- 同步课表时，Cookie 只在 App 进程内传给 `ChaoxingClient`，随后用于学习通的 HTTPS 请求。
 
-## 课表抓取
+## 课表接口
 
-`app/src/main/assets/timetable_extract.js` 在页面内执行，流程：
+请求：
 
-1. 遍历当前文档和同源 iframe；
-2. 优先识别课程列表表格；
-3. 再识别「节次 × 星期」的周课表；
-4. 解析课程名、教师、地点、星期、节次、周次；
-5. 通过 `FosuBridge.onCourses(JSON)` 回传；
-6. Kotlin 端使用 `TimetableTextParser` 校验，转换为 `Course`；
-7. 用户在「替换 / 追加 / 取消」对话框中选择。
+```http
+POST /pc/curriculum/getMyLessons HTTP/1.1
+Host: kb.chaoxing.com
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+Cookie: <学习通 Cookie>
+Referer: https://kb.chaoxing.com/pc/curriculum
 
-支持的常见结构：
+week=6
+```
 
-### 课程列表
+- 不带 `week` 时只返回当前周；要获取全学期，需要按 `1..maxWeek` 逐周请求。
+- `data.curriculum.maxWeek` 给出学期总周数。
+- `data.curriculum.firstWeekDate` 是第 1 周周一的毫秒时间戳（北京时间）。
+- `data.curriculum.lessonTimeConfigArray` 是学校真实节次时间，例如 `["8:00-8:50", ...]`。
+- `data.lessonArray` 是当周课程，主要字段：
 
-| 课程名称 | 教师 | 地点 | 星期 | 节次 | 周次 |
-| --- | --- | --- | --- | --- | --- |
-| 数据结构 | 王五 | A3-201 | 星期三 | 3-4 | 1-16 |
+| 字段 | 含义 |
+| --- | --- |
+| `lessonId` | 课程安排 ID |
+| `name` | 课程名称 |
+| `teacherName` | 授课教师 |
+| `location` | 上课地点 |
+| `dayOfWeek` | 星期（1=周一 … 7=周日） |
+| `beginNumber` | 开始节次（1 基） |
+| `length` | 连续节数 |
+| `weeks` | 当前请求周的周次；逐周合并后压缩为 `1-16` 等 |
 
-### 周课表
-
-| 节次 | 星期一 | 星期二 | … |
-| --- | --- | --- | --- |
-| 第一节 | 高等数学（1-16周） |  |  |
-| 第二节 | 高等数学（1-16周，rowspan=2） | 大学英语 |  |
-
-抓取器也兼容旧式 `<br>` 分隔的课程单元格。多个课程块、`rowspan`、单双周和中英文星期都能处理。
-
-抓取结果只保留以下字段：
+App 只保留以下字段：
 
 - 课程名称
 - 授课教师
 - 上课地点
 - 星期
-- 起止小节
+- 起止节次
 - 周次
 
-**不抓取备注、成绩、账号或其他页面内容。** 上课时间由 App 的 6 大节 / 14 小节时间表根据小节自动计算。
+**不抓取备注、成绩、账号资料或其他页面内容。**
 
-## 课表时间与节假日
+## 合并策略
 
-- 固定 6 大节、14 小节，时间见 README。
-- 周末自动跳过。
-- 节假日由用户在「我的 → 节假日 / 停课日」维护。
-- 日期游标遇到节假日只前进日期，不消耗课程；课程顺延到下一个教学日，并标记「调」。
-- 7 天周视图按自然日期展示，节假日列显示「休」。
+每周响应中同一门课只出现一次，`weeks` 就是该周。App 以：
+
+```text
+lessonId + dayOfWeek + beginNumber + length + location + teacherName + name
+```
+
+作为合并键，把多周出现合并为一门课，再用 `WeekSpec.compress()` 压缩周次。教室或教师中途变化会拆成不同课程块。
+
+## 节次与显示
+
+- 节次时间直接使用 `lessonTimeConfigArray`，不使用本地猜测的 6 大节 / 14 小节。
+- 默认显示 12 节；如果学校时间表更长，按实际节次数显示，上限 20。
+- 周课表始终显示周一至周日，今天列高亮。
+- 不自动推算法定节假日或调休；学习通返回哪一周有课，就显示哪一周。
 
 ## 已知限制
 
-- 100 教务的页面结构可能随学校升级变化；抓取器使用启发式识别，不保证永久有效。
-- **班级课表**页面按班级列出多行，不一定代表当前登录学生的个人课表。请优先进入「学生课表」。
-- 跨域 iframe 受浏览器同源策略限制，无法读取；此时请在页面内打开独立课表链接，或使用手动导入。
-- 100 教务若用「大节」而非「小节」表示节次，可能需要根据页面实际结构补充映射。
-- 校外访问依赖校园 VPN；App 不提供 VPN 或代理。
-- App 不做验证码识别、密码保存、接口签名伪造或绕过学校授权。
+- 学习通登录页和课表接口可能随官方升级变化。
+- 账号必须已绑定学生课表；教师账号或未绑定课表的账号可能返回空列表。
+- 学习通可能要求验证码、短信或扫码；这些步骤由官方页面处理，App 不绕过。
+- 校外访问学习通可能需要校园网或学校 VPN。
+- App 不做密码保存、验证码识别、接口签名伪造或绕过授权。
 
 ## 手动导入
 
-抓取失败时，可在「课表 → 手动导入」粘贴：
+同步失败时，可在「课表 → 手动导入」粘贴：
 
 ```text
 课程名|教师|地点|周一|1-2|1-16

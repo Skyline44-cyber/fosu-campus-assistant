@@ -44,8 +44,9 @@ class AppStore(context: Context) {
             termStart = settingsJson.optString("termStart").toLocalDateOrNull()
                 ?: LocalDate.now().with(java.time.DayOfWeek.MONDAY),
             totalWeeks = settingsJson.optInt("totalWeeks", 20).coerceIn(1, 30),
-            sectionsPerDay = SectionSchedule.COUNT,
-            holidays = parseHolidays(settingsJson.optJSONArray("holidays")),
+            sectionTimes = TimetableSections.normalized(
+                parseStringArray(settingsJson.optJSONArray("sectionTimes"))
+            ),
             guideSeen = settingsJson.optBoolean("guideSeen", false)
         )
 
@@ -78,7 +79,10 @@ class AppStore(context: Context) {
                 val weekday = item.optInt("weekday", -1)
                 val start = item.optInt("startSection", -1)
                 val end = item.optInt("endSection", -1)
-                if (name.isBlank() || weekday !in 1..7 || start !in 1..SectionSchedule.COUNT || end !in start..SectionSchedule.COUNT) continue
+                if (name.isBlank() || weekday !in 1..7 ||
+                    start !in 1..TimetableSections.MAX_SECTION ||
+                    end !in start..TimetableSections.MAX_SECTION
+                ) continue
                 courses += Course(
                     id = item.optString("id").ifBlank { UUID.randomUUID().toString() },
                     name = name,
@@ -88,7 +92,7 @@ class AppStore(context: Context) {
                     startSection = start,
                     endSection = end,
                     weeks = item.optString("weeks", "1-16").ifBlank { "1-16" }.take(40),
-                    colorIndex = item.optInt("colorIndex", i % 4).coerceIn(0, 3),
+                    colorIndex = item.optInt("colorIndex", i % 8).coerceIn(0, 7),
                     note = item.optString("note", "").take(120)
                 )
             }
@@ -104,10 +108,7 @@ class AppStore(context: Context) {
             .put("tariff", data.settings.tariff.toPlainString())
             .put("termStart", data.settings.termStart.toString())
             .put("totalWeeks", data.settings.totalWeeks)
-            .put("sectionsPerDay", SectionSchedule.COUNT)
-            .put("holidays", JSONArray().apply {
-                data.settings.holidays.sorted().forEach { put(it.toString()) }
-            })
+            .put("sectionTimes", JSONArray(data.settings.sectionTimes))
             .put("guideSeen", data.settings.guideSeen)
 
         val readings = JSONArray()
@@ -151,11 +152,11 @@ class AppStore(context: Context) {
 
     private fun String.toLocalDateOrNull(): LocalDate? = runCatching { LocalDate.parse(this) }.getOrNull()
 
-    private fun parseHolidays(array: JSONArray?): Set<LocalDate> {
-        if (array == null) return emptySet()
-        return buildSet {
+    private fun parseStringArray(array: JSONArray?): List<String> {
+        if (array == null) return emptyList()
+        return buildList {
             for (i in 0 until array.length()) {
-                array.optString(i).toLocalDateOrNull()?.let { add(it) }
+                array.optString(i).trim().takeIf { it.isNotBlank() }?.let { add(it) }
             }
         }
     }
@@ -163,6 +164,6 @@ class AppStore(context: Context) {
     companion object {
         private const val PREFS = "fosu_campus_data_v1"
         private const val KEY_DATA = "app_data"
-        private const val SCHEMA_VERSION = 1
+        private const val SCHEMA_VERSION = 2
     }
 }

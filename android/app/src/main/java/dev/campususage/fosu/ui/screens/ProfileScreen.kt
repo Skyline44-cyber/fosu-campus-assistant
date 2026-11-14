@@ -1,11 +1,7 @@
 package dev.campususage.fosu.ui.screens
 
-import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,7 +21,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.campususage.fosu.BuildConfig
-import dev.campususage.fosu.TimetableLoginActivity
 import dev.campususage.fosu.data.*
 import dev.campususage.fosu.ui.*
 import dev.campususage.fosu.ui.theme.*
@@ -36,25 +31,11 @@ fun ProfileScreen(vm: FosuViewModel) {
     val context = LocalContext.current
     var showRoom by remember { mutableStateOf(false) }
     var showTerm by remember { mutableStateOf(false) }
-    var showHolidays by remember { mutableStateOf(false) }
     var showBackup by remember { mutableStateOf(false) }
     var showClear by remember { mutableStateOf(false) }
     var showClearLogin by remember { mutableStateOf(false) }
     var guide by remember { mutableStateOf<OfficialService?>(null) }
-
-    val loginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val json = result.data?.getStringExtra(TimetableWebContract.EXTRA_COURSES_JSON)
-            val replace = result.data?.getBooleanExtra(TimetableWebContract.EXTRA_REPLACE, true) ?: true
-            if (!json.isNullOrBlank()) {
-                val imported = vm.importTimetable(json, replace)
-                vm.notify(imported.message)
-            }
-        }
-    }
-    val openTimetableLogin = {
-        loginLauncher.launch(Intent(context, TimetableLoginActivity::class.java))
-    }
+    val openTimetableLogin = rememberChaoxingImport(vm)
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -65,7 +46,7 @@ fun ProfileScreen(vm: FosuViewModel) {
             ScreenHeader(
                 eyebrow = "PROFILE · LOCAL FIRST",
                 title = "我的",
-                subtitle = "电费本地记录 · 课表来自 100 教务",
+                subtitle = "电费本地记录 · 课表来自学习通",
                 trailing = { Pill("v${BuildConfig.VERSION_NAME}", color = Purple) }
             )
         }
@@ -92,7 +73,7 @@ fun ProfileScreen(vm: FosuViewModel) {
                     Pill("本机保存", color = Mint)
                 }
                 Text(
-                    "本应用是非官方工具，与佛山大学、佛大一卡通及 100 教务均无隶属关系。",
+                    "本应用是非官方工具，与佛山大学、佛大一卡通及学习通均无隶属关系。",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -112,15 +93,8 @@ fun ProfileScreen(vm: FosuViewModel) {
                 SettingRow(
                     icon = Icons.Default.CalendarMonth,
                     title = "学期与节次",
-                    subtitle = "第 ${TimetableMath.currentWeek(data.settings, vm.today)} 周 · 共 ${data.settings.totalWeeks} 周 · 6 大节 14 小节",
+                    subtitle = "第 ${TimetableMath.currentWeek(data.settings, vm.today)} 周 · 共 ${data.settings.totalWeeks} 周 · ${data.settings.sectionTimes.size} 节",
                     onClick = { showTerm = true }
-                )
-                AppDivider()
-                SettingRow(
-                    icon = Icons.Default.Event,
-                    title = "节假日 / 停课日",
-                    subtitle = "已跳过 ${data.settings.holidays.size} 天；周末自动跳过",
-                    onClick = { showHolidays = true }
                 )
             }
         }
@@ -137,7 +111,7 @@ fun ProfileScreen(vm: FosuViewModel) {
                             color = TextPrimary
                         )
                     }
-                    Text("JSON v1", style = MaterialTheme.typography.labelSmall, color = Purple)
+                    Text("JSON v2", style = MaterialTheme.typography.labelSmall, color = Purple)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SecondaryAction("复制备份", icon = Icons.Default.ContentCopy, onClick = {
@@ -152,7 +126,7 @@ fun ProfileScreen(vm: FosuViewModel) {
                     SecondaryAction("清空数据", icon = Icons.Default.DeleteForever, onClick = { showClear = true })
                 }
                 Text(
-                    "备份包含房间、电价、电费记录与课程，不包含教务密码或 WebView 登录 Cookie。",
+                    "备份包含房间、电价、电费记录与课程，不包含学习通密码或 WebView 登录 Cookie。",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -170,29 +144,15 @@ fun ProfileScreen(vm: FosuViewModel) {
                 ) { guide = OfficialServices.ECARD }
                 AppDivider()
                 ServiceRow(
-                    title = "100 教务课表",
-                    subtitle = "在 App 内登录并抓取学生课表",
+                    title = "学习通课表",
+                    subtitle = "在 App 内登录并同步学生课表",
                     icon = Icons.Default.School,
                     accent = Blue
                 ) { openTimetableLogin() }
                 AppDivider()
                 LinkRow(
-                    title = "统一身份认证",
-                    subtitle = "学校账号登录入口",
-                    icon = Icons.Default.Lock,
-                    onClick = { OfficialLauncher.openUrl(context, OfficialLauncher.FOSU_AUTH) }
-                )
-                AppDivider()
-                LinkRow(
-                    title = "校园网与账号指引",
-                    subtitle = "佛山大学帮助中心",
-                    icon = Icons.Default.HelpOutline,
-                    onClick = { OfficialLauncher.openUrl(context, OfficialLauncher.FOSU_HELP) }
-                )
-                AppDivider()
-                LinkRow(
-                    title = "清除 100 教务登录",
-                    subtitle = "删除 WebView 保存的教务 Cookie",
+                    title = "清除学习通登录",
+                    subtitle = "删除 WebView 保存的学习通 Cookie",
                     icon = Icons.Default.Logout,
                     onClick = { showClearLogin = true }
                 )
@@ -201,7 +161,7 @@ fun ProfileScreen(vm: FosuViewModel) {
 
         item {
             InfoNotice(
-                "登录 100 教务时，账号密码只输入学校自己的网页，App 不读取也不保存。抓取完成后只保存课程名称、教师、地点、星期、节次和周次。"
+                "登录学习通时，账号密码只输入学习通官方网页，App 不读取也不保存。同步完成后只保存课程名称、教师、地点、星期、节次和周次。"
             )
         }
 
@@ -210,7 +170,7 @@ fun ProfileScreen(vm: FosuViewModel) {
                 Text("关于佛大校园助手", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
                 Text("版本 ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium, color = TextMuted)
                 Text(
-                    "功能：佛大一卡通电费台账、100 教务课表导入、6 大节 14 小节本地周课表、节假日跳过与数据备份。",
+                    "功能：佛大一卡通电费台账、学习通学生课表同步、7 天周课表、数据备份。",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -223,9 +183,6 @@ fun ProfileScreen(vm: FosuViewModel) {
     }
     if (showTerm) {
         TermSettingsDialog(data.settings, vm.today, { showTerm = false }, vm::updateTerm)
-    }
-    if (showHolidays) {
-        HolidaySettingsDialog(data.settings.holidays, { showHolidays = false }, vm::updateHolidays)
     }
     if (showBackup) {
         BackupImportDialog(
@@ -249,11 +206,11 @@ fun ProfileScreen(vm: FosuViewModel) {
     }
     if (showClearLogin) {
         ConfirmDialog(
-            title = "清除 100 教务登录？",
-            body = "会删除 WebView 中的教务 Cookie 和网页存储，下次导入需要重新登录。电费记录和已导入课程不受影响。",
+            title = "清除学习通登录？",
+            body = "会删除 WebView 中的学习通 Cookie 和网页存储，下次同步需要重新登录。电费记录和已导入课程不受影响。",
             confirmText = "清除登录",
             destructive = true,
-            onConfirm = { OfficialLauncher.clearTimetableLogin(context) },
+            onConfirm = { OfficialLauncher.clearChaoxingLogin(context) },
             onDismiss = { showClearLogin = false }
         )
     }

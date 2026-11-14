@@ -1,9 +1,5 @@
 package dev.campususage.fosu.ui.screens
 
-import android.app.Activity
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,7 +25,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import dev.campususage.fosu.TimetableLoginActivity
 import dev.campususage.fosu.data.*
 import dev.campususage.fosu.ui.*
 import dev.campususage.fosu.ui.theme.*
@@ -39,32 +34,14 @@ fun HomeScreen(vm: FosuViewModel) {
     val data = vm.data
     val context = LocalContext.current
     val week = TimetableMath.currentWeek(data.settings, vm.today)
-    val teachingToday = TeachingCalendar.isTeachingDay(vm.today, data.settings)
-    val todayHoliday = TeachingCalendar.isHoliday(vm.today, data.settings)
-    val nextTeachingDay = TeachingCalendar.nextTeachingDay(vm.today, data.settings)
-    val todayCourses = if (!teachingToday) emptyList() else TeachingCalendar
-        .scheduleForWeek(data.settings, week, data.courses)
-        .filter { it.date == vm.today }
-        .map { it.course }
-        .distinctBy { it.id }
+    val todayWeekday = TimetableMath.todayWeekday(vm.today)
+    val todayCourses = TimetableMath.coursesForWeek(data.courses, week)
+        .filter { it.weekday == todayWeekday }
         .sortedBy { it.startSection }
     val balanceReading = ElectricityMath.latestBalance(data.readings)
     val points = ElectricityMath.chartPoints(data.readings)
     var guide by remember { mutableStateOf<OfficialService?>(null) }
-
-    val loginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val json = result.data?.getStringExtra(TimetableWebContract.EXTRA_COURSES_JSON)
-            val replace = result.data?.getBooleanExtra(TimetableWebContract.EXTRA_REPLACE, true) ?: true
-            if (!json.isNullOrBlank()) {
-                val imported = vm.importTimetable(json, replace)
-                vm.notify(imported.message)
-            }
-        }
-    }
-    val openTimetableLogin = {
-        loginLauncher.launch(Intent(context, TimetableLoginActivity::class.java))
-    }
+    val openTimetableLogin = rememberChaoxingImport(vm)
 
     LazyColumn(
         Modifier.fillMaxSize(),
@@ -117,11 +94,11 @@ fun HomeScreen(vm: FosuViewModel) {
                 if (todayCourses.isEmpty()) {
                     EmptyState(
                         icon = Icons.Default.CalendarMonth,
-                        title = if (teachingToday) "今天没有课" else if (todayHoliday) "今天是节假日" else "今天周末不上课",
-                        body = if (teachingToday) {
-                            "第 $week 周的这一天是空的，去安排一点自己的时间。"
+                        title = if (todayWeekday >= 6) "今天周末不上课" else "今天没有课",
+                        body = if (todayWeekday >= 6) {
+                            "周末没有排课，可以切换到课表查看整周安排。"
                         } else {
-                            "日期游标已跳过今天，下个教学日是 ${nextTeachingDay.monthValue} 月 ${nextTeachingDay.dayOfMonth} 日。"
+                            "第 $week 周的这一天是空的，去安排一点自己的时间。"
                         }
                     )
                 } else {
@@ -151,8 +128,8 @@ fun HomeScreen(vm: FosuViewModel) {
                     modifier = Modifier.weight(1f)
                 ) { guide = OfficialServices.ECARD }
                 QuickTile(
-                    title = "100 教务",
-                    subtitle = "登录后导入课表",
+                    title = "学习通",
+                    subtitle = "登录同步课表",
                     icon = Icons.Default.School,
                     accent = Blue,
                     modifier = Modifier.weight(1f)
@@ -170,7 +147,7 @@ fun HomeScreen(vm: FosuViewModel) {
                 ) { vm.go("electricity") }
                 QuickTile(
                     title = "导入课表",
-                    subtitle = "登录 100 教务",
+                    subtitle = "登录学习通",
                     icon = Icons.Default.School,
                     accent = Mint,
                     modifier = Modifier.weight(1f)
@@ -193,7 +170,7 @@ fun HomeScreen(vm: FosuViewModel) {
 
         item {
             InfoNotice(
-                "电费来自企业微信「佛大一卡通」，课表来自 App 内登录的 100 教务。App 不读取教务密码，只保存你确认导入的课程。"
+                "电费来自企业微信「佛大一卡通」，课表来自 App 内登录的学习通。App 不读取学习通密码，只保存你确认同步的课程。"
             )
         }
 

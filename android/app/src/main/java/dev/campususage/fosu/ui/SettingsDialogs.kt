@@ -1,26 +1,20 @@
 package dev.campususage.fosu.ui
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import dev.campususage.fosu.data.*
 import dev.campususage.fosu.ui.theme.*
 import java.math.BigDecimal
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 @Composable
 fun RoomSettingsDialog(
@@ -132,12 +126,12 @@ fun TermSettingsDialog(
                     shape = RoundedCornerShape(13.dp)
                 )
                 Text(
-                    "课表固定为 6 大节、14 小节。假期和停课日请在「节假日」中设置。",
+                    "学习通同步后会自动写入学期第一周周一、总周数和节次时间；也可以在这里手动修正。",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
                 Text(
-                    "今天按此设置计算为第 ${TimetableMath.currentWeek(initial.copy(termStart = start), today)} 周。开学后请把日期改成第一周周一。",
+                    "今天按此设置计算为第 ${TimetableMath.currentWeek(initial.copy(termStart = start), today)} 周。",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted
                 )
@@ -152,87 +146,6 @@ fun TermSettingsDialog(
                     return@TextButton
                 }
                 val result = onSave(start, weeks)
-                if (result.ok) onDismiss() else error = result.message
-            }) { Text("保存", color = Pink) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消", color = TextMuted) }
-        }
-    )
-}
-
-@Composable
-fun HolidaySettingsDialog(
-    initial: Set<LocalDate>,
-    onDismiss: () -> Unit,
-    onSave: (List<LocalDate>) -> ActionResult
-) {
-    val context = LocalContext.current
-    var dates by remember { mutableStateOf(initial.sorted()) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = SurfaceElevated,
-        shape = RoundedCornerShape(24.dp),
-        title = { Text("节假日 / 停课日", style = MaterialTheme.typography.titleLarge, color = TextPrimary) },
-        text = {
-            Column(
-                Modifier
-                    .heightIn(max = 480.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(9.dp)
-            ) {
-                Text(
-                    "周末自动跳过。这里添加校历中的法定节假日、校庆或停课日；这些日期不显示课程。日期游标遇到节假日只前进，不消耗课程。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
-                )
-                Button(
-                    onClick = {
-                        val today = LocalDate.now()
-                        DatePickerDialog(
-                            context,
-                            { _, year, month, day ->
-                                val date = LocalDate.of(year, month + 1, day)
-                                dates = (dates + date).distinct().sorted()
-                            },
-                            today.year,
-                            today.monthValue - 1,
-                            today.dayOfMonth
-                        ).show()
-                    },
-                    shape = RoundedCornerShape(13.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Pink, contentColor = Ink)
-                ) { Text("添加节假日") }
-                if (dates.isEmpty()) {
-                    Text("还没有添加节假日。", style = MaterialTheme.typography.bodySmall, color = TextMuted)
-                } else {
-                    dates.forEach { date ->
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                date.format(DateTimeFormatter.ofPattern("yyyy 年 M 月 d 日")),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextPrimary
-                            )
-                            IconButton(onClick = {
-                                dates = dates.filterNot { it == date }
-                            }) {
-                                Icon(Icons.Default.Delete, "删除节假日", tint = Danger)
-                            }
-                        }
-                    }
-                }
-                error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Danger) }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val result = onSave(dates)
                 if (result.ok) onDismiss() else error = result.message
             }) { Text("保存", color = Pink) }
         },

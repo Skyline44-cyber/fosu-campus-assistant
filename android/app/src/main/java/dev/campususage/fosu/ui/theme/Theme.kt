@@ -27,7 +27,19 @@ val Danger = Color(0xFFFF9AA2)
 val Outline = Color(0xFF344057)
 val Ink = Color(0xFF141A2B)
 
-val CourseColors = listOf(Pink, Blue, Purple, Mint)
+val ChaoxingBlue = Color(0xFF4A90E2)
+
+/** The saturated palette used by Chaoxing's course blocks. */
+val CourseColors = listOf(
+    Color(0xFF4A90E2),
+    Color(0xFF5B8FF9),
+    Color(0xFF61C0BF),
+    Color(0xFFF6BD16),
+    Color(0xFF7262FD),
+    Color(0xFF78D3F8),
+    Color(0xFFE8684A),
+    Color(0xFF9A60B4)
+)
 
 private val AppColors = darkColorScheme(
     primary = Pink,

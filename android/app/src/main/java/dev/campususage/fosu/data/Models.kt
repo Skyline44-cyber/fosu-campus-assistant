@@ -27,8 +27,7 @@ data class Settings(
     val tariff: BigDecimal = BigDecimal("0.65"),
     val termStart: LocalDate = LocalDate.now().with(DayOfWeek.MONDAY),
     val totalWeeks: Int = 20,
-    val sectionsPerDay: Int = SectionSchedule.COUNT,
-    val holidays: Set<LocalDate> = emptySet(),
+    val sectionTimes: List<String> = TimetableSections.defaultTimes,
     val guideSeen: Boolean = false
 )
 
@@ -56,12 +55,11 @@ data class Course(
     val colorIndex: Int = 0,
     val note: String = ""
 ) {
-    val sectionLabel: String get() = if (startSection == endSection) "${startSection}节" else "$startSection-${endSection}节"
-    val timeLabel: String get() = SectionSchedule.timeRange(startSection, endSection)
-    val weekLabel: String get() = if (weeks.contains("周")) weeks else "${weeks}周"
-    val fullLabel: String get() = listOf(name, teacher, room, timeLabel, weekLabel)
-        .filter { it.isNotBlank() }
-        .joinToString(" · ")
+    val sectionLabel: String
+        get() = if (startSection == endSection) "${startSection}节" else "$startSection-${endSection}节"
+
+    val weekLabel: String
+        get() = if (weeks.contains("周")) weeks else "${weeks}周"
 }
 
 data class AppData(
@@ -87,6 +85,67 @@ data class ActionResult(
     val message: String
 )
 
+/**
+ * Section times used by the Chaoxing-style week grid.
+ *
+ * Chaoxing returns the school's real time table in
+ * `data.curriculum.lessonTimeConfigArray`; those values are imported into
+ * [Settings.sectionTimes]. The defaults below are only used before the first
+ * import and by the manual editor.
+ */
+object TimetableSections {
+    const val MAX_SECTION = 20
+    const val DEFAULT_COUNT = 12
+
+    val defaultTimes = listOf(
+        "08:00-08:45",
+        "08:55-09:40",
+        "10:00-10:45",
+        "10:55-11:40",
+        "14:00-14:45",
+        "14:55-15:40",
+        "16:00-16:45",
+        "16:55-17:40",
+        "19:00-19:45",
+        "19:55-20:40",
+        "20:50-21:35",
+        "21:45-22:30"
+    )
+
+    fun normalized(raw: List<String>): List<String> {
+        val cleaned = raw.mapNotNull(::normalize)
+        return cleaned.ifEmpty { defaultTimes }
+    }
+
+    fun normalize(raw: String): String? {
+        val match = Regex("""(\d{1,2})\s*:\s*(\d{2})\s*[-~至]\s*(\d{1,2})\s*:\s*(\d{2})""")
+            .find(raw.trim()) ?: return null
+        val (h1, m1, h2, m2) = match.destructured
+        val startHour = h1.toIntOrNull() ?: return null
+        val startMinute = m1.toIntOrNull() ?: return null
+        val endHour = h2.toIntOrNull() ?: return null
+        val endMinute = m2.toIntOrNull() ?: return null
+        if (startHour !in 0..23 || endHour !in 0..23) return null
+        if (startMinute !in 0..59 || endMinute !in 0..59) return null
+        return "%02d:%02d-%02d:%02d".format(startHour, startMinute, endHour, endMinute)
+    }
+
+    fun sectionCount(settings: Settings, courses: List<Course> = emptyList()): Int {
+        val lastCourse = courses.maxOfOrNull { it.endSection } ?: 0
+        return maxOf(settings.sectionTimes.size, lastCourse, DEFAULT_COUNT)
+            .coerceIn(1, MAX_SECTION)
+    }
+
+    fun timeAt(times: List<String>, section: Int): String =
+        times.getOrNull(section - 1).orEmpty()
+
+    fun timeRange(times: List<String>, start: Int, end: Int): String {
+        val first = timeAt(times, start).substringBefore('-').trim()
+        val last = timeAt(times, end).substringAfter('-', "").trim()
+        return if (first.isNotBlank() && last.isNotBlank()) "$first-$last" else ""
+    }
+}
+
 object TimetableMath {
     val weekdayLabels = listOf("一", "二", "三", "四", "五", "六", "日")
     val weekdayFullLabels = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
@@ -103,144 +162,23 @@ object TimetableMath {
         return raw.coerceIn(1, settings.totalWeeks.coerceAtLeast(1))
     }
 
-    fun courseOccurs(course: Course, week: Int): Boolean = WeekSpec.includes(course.weeks, week)
-
     fun todayWeekday(today: LocalDate = LocalDate.now()): Int = today.dayOfWeek.value
 
     fun dateForWeekday(settings: Settings, week: Int, weekday: Int): LocalDate =
         weekStart(settings, week).plusDays((weekday - 1).toLong())
-}
 
-data class SmallSection(
-    val index: Int,
-    val bigIndex: Int,
-    val start: String,
-    val end: String
-)
+    fun coursesForWeek(courses: List<Course>, week: Int): List<Course> =
+        courses.filter { WeekSpec.includes(it.weeks, week) }
+            .sortedWith(compareBy({ it.weekday }, { it.startSection }, { it.name }))
 
-data class BigSection(
-    val index: Int,
-    val label: String,
-    val startSection: Int,
-    val endSection: Int
-) {
-    val count: Int get() = endSection - startSection + 1
-}
-
-data class ScheduledCourse(
-    val course: Course,
-    val date: LocalDate,
-    val shifted: Boolean
-)
-
-/**
- * The 14 small sections and their 6 big-section groups, using the school timetable
- * times shown in the reference material.
- */
-object SectionSchedule {
-    val small = listOf(
-        SmallSection(1, 1, "08:00", "08:40"),
-        SmallSection(2, 1, "08:45", "09:25"),
-        SmallSection(3, 2, "09:40", "10:20"),
-        SmallSection(4, 2, "10:25", "11:05"),
-        SmallSection(5, 2, "11:10", "11:50"),
-        SmallSection(6, 3, "13:30", "14:10"),
-        SmallSection(7, 3, "14:15", "14:55"),
-        SmallSection(8, 4, "15:10", "15:50"),
-        SmallSection(9, 4, "15:55", "16:35"),
-        SmallSection(10, 4, "16:40", "17:20"),
-        SmallSection(11, 5, "18:30", "19:10"),
-        SmallSection(12, 5, "19:15", "19:55"),
-        SmallSection(13, 6, "20:05", "20:45"),
-        SmallSection(14, 6, "20:50", "21:30")
-    )
-
-    val big = listOf(
-        BigSection(1, "第一大节", 1, 2),
-        BigSection(2, "第二大节", 3, 5),
-        BigSection(3, "第三大节", 6, 7),
-        BigSection(4, "第四大节", 8, 10),
-        BigSection(5, "第五大节", 11, 12),
-        BigSection(6, "第六大节", 13, 14)
-    )
-
-    val COUNT: Int get() = small.size
-
-    fun smallSection(index: Int): SmallSection? = small.firstOrNull { it.index == index }
-
-    fun bigSection(index: Int): BigSection? = big.firstOrNull { it.index == index }
-
-    fun bigFor(section: Int): BigSection? =
-        big.firstOrNull { section in it.startSection..it.endSection }
-
-    fun timeRange(start: Int, end: Int): String {
-        val first = smallSection(start) ?: return ""
-        val last = smallSection(end) ?: first
-        return "${first.start}-${last.end}"
-    }
-
-    fun bigTimeRange(section: Int): String =
-        bigFor(section)?.let { timeRange(it.startSection, it.endSection) }.orEmpty()
-}
-
-object TeachingCalendar {
-    fun isWeekend(date: LocalDate): Boolean =
-        date.dayOfWeek == DayOfWeek.SATURDAY || date.dayOfWeek == DayOfWeek.SUNDAY
-
-    fun isHoliday(date: LocalDate, settings: Settings): Boolean = date in settings.holidays
-
-    fun isTeachingDay(date: LocalDate, settings: Settings): Boolean =
-        !isWeekend(date) && !isHoliday(date, settings)
-
-    /** Advance a date cursor one day at a time, skipping weekends and holidays. */
-    fun nextTeachingDay(date: LocalDate, settings: Settings): LocalDate {
-        var cursor = date
-        repeat(370) {
-            if (isTeachingDay(cursor, settings)) return cursor
-            cursor = cursor.plusDays(1)
-        }
-        return cursor
-    }
-
-    /**
-     * Find the next real date for a course. A holiday only advances the date
-     * cursor; the course is moved to the next teaching day instead of being
-     * consumed or dropped.
-     */
     fun nextCourseDate(course: Course, settings: Settings, from: LocalDate = LocalDate.now()): LocalDate? {
-        val firstWeek = maxOf(1, TimetableMath.currentWeek(settings, from))
+        val firstWeek = maxOf(1, currentWeek(settings, from))
         for (week in firstWeek..settings.totalWeeks) {
             if (!WeekSpec.includes(course.weeks, week)) continue
-            val scheduled = TimetableMath.weekStart(settings, week)
-                .plusDays((course.weekday - 1).toLong())
-            val actual = nextTeachingDay(scheduled, settings)
-            if (!actual.isBefore(from)) return actual
+            val date = dateForWeekday(settings, week, course.weekday)
+            if (!date.isBefore(from)) return date
         }
         return null
-    }
-
-    fun scheduleForWeek(settings: Settings, week: Int, courses: List<Course>): List<ScheduledCourse> {
-        val start = TimetableMath.weekStart(settings, week)
-        val end = start.plusDays(6)
-        return courses.flatMap { course ->
-            (1..settings.totalWeeks).flatMap { sourceWeek ->
-                if (!WeekSpec.includes(course.weeks, sourceWeek)) {
-                    emptyList<ScheduledCourse>()
-                } else {
-                    val scheduled = TimetableMath.weekStart(settings, sourceWeek)
-                        .plusDays((course.weekday - 1).toLong())
-                    val actual = nextTeachingDay(scheduled, settings)
-                    if (actual.isBefore(start) || actual.isAfter(end)) emptyList()
-                    else listOf(ScheduledCourse(course, actual, actual != scheduled))
-                }
-            }
-        }.distinctBy { it.course.id to it.date }
-            .sortedWith(compareBy({ it.date }, { it.course.startSection }))
-    }
-
-    fun holidaysInWeek(settings: Settings, week: Int): List<LocalDate> {
-        val start = TimetableMath.weekStart(settings, week)
-        return (0L..6L).map { start.plusDays(it) }.filter { isHoliday(it, settings) }
     }
 }
 
@@ -248,14 +186,22 @@ object TeachingCalendar {
 object WeekSpec {
     fun includes(spec: String, week: Int): Boolean {
         if (week <= 0) return false
+        return expand(spec, maxOf(week, 30)).contains(week)
+    }
+
+    fun expand(spec: String, maxWeek: Int = 30): Set<Int> {
         val text = spec.trim()
-        if (text.isEmpty() || text == "全周" || text == "每周" || text == "全部") return true
+        if (text.isEmpty() || text == "全周" || text == "每周" || text == "全部") {
+            return (1..maxWeek.coerceAtLeast(1)).toSet()
+        }
 
         val normalized = text
             .replace('，', ',')
             .replace('、', ',')
             .replace('；', ',')
             .replace(';', ',')
+            .replace("第", "")
+            .replace("周", "")
 
         val hasOdd = normalized.contains("单")
         val hasEven = normalized.contains("双")
@@ -265,7 +211,7 @@ object WeekSpec {
             else -> null
         }
 
-        var matched = false
+        val result = linkedSetOf<Int>()
         normalized.split(',').forEach { raw ->
             if (raw.isBlank()) return@forEach
             val segmentOdd = raw.contains("单")
@@ -275,7 +221,7 @@ object WeekSpec {
                 segmentEven && !segmentOdd -> 0
                 else -> globalParity
             }
-            val numbers = Regex("\\d+").findAll(raw)
+            val numbers = Regex("""\d+""").findAll(raw)
                 .mapNotNull { it.value.toIntOrNull() }
                 .toList()
             if (numbers.isEmpty()) return@forEach
@@ -284,9 +230,30 @@ object WeekSpec {
             if (from <= 0 || to <= 0) return@forEach
             val low = minOf(from, to)
             val high = maxOf(from, to)
-            if (week in low..high && (parity == null || week % 2 == parity)) matched = true
+            for (week in low..high) {
+                if (week <= maxWeek && (parity == null || week % 2 == parity)) result += week
+            }
         }
-        return matched
+        return result
+    }
+
+    fun compress(weeks: Collection<Int>): String {
+        val sorted = weeks.filter { it > 0 }.distinct().sorted()
+        if (sorted.isEmpty()) return ""
+        val parts = mutableListOf<String>()
+        var start = sorted.first()
+        var previous = start
+        for (week in sorted.drop(1)) {
+            if (week == previous + 1) {
+                previous = week
+            } else {
+                parts += if (start == previous) "$start" else "$start-$previous"
+                start = week
+                previous = week
+            }
+        }
+        parts += if (start == previous) "$start" else "$start-$previous"
+        return parts.joinToString(",")
     }
 }
 
